@@ -67,3 +67,73 @@ Transformerは、固定の計算量で計算が可能で、我々はMulti-Head A
 Transformerは、Multi-Head Attensionを使うことで、層が深くなっても計算量を減らせる
 
 # Model Architecture
+競争力のあるモデルはエンコーダーデコーダー構造を持っている
+
+各段階で、モデルは自己回帰を行う。前に作られた信号を次に信号を作る時に加算する。
+
+Transformerはこのような構造に従います。
+
+全結合層はエンコーダー、デコーダー両方に存在しています。
+
+## 要約
+図の通りのアーキテクチャになってますという説明
+
+# Encoder and Decoder Stacks
+
+## Encoder
+エンコーダーは6つの同一の層で作られます
+
+1つの層は2つのサブ層を持ち、
+
+1つ目はMulti-Head Self-Attention Mecanismで、
+
+2つ目はシンプルな全結合層です。
+
+2つのサブ層の後には正規化の層があります。
+
+それぞれのサブ層の出力は以下のような感じ
+
+```python
+    # Encoder sub Layer
+    LayerNrom(x + Sublayer(x))
+```
+
+これらの残渣接続層を促進する為、このサブ層の出力は512次元となる (埋め込みそうと同様に)
+
+## Decoder
+デコーダーも同様に6つの同一層から作られる
+
+デコーダーではエンコーダーの2層に加えて、3つ目のサブ層を追加する
+
+これはエンコーダーの出力に対してMulti-Head Attentionを実行する
+
+エンコーダーと同様、残渣接続を各サブ層に対して行う。その後、正規化を行う。
+
+また、最初のアテンション機構も修正する。 (何かを防ぐためらしいがよくわからず)
+
+このマスク処理は、出力の埋め込みが1つずつオフセットされていることと相まって、
+
+i番目の位置の予測はi番目より小さい位置の吉の出力二のみ依存することを保証する
+
+### 要約
+ここも図の通り。ただし、Decoderのマスク処理についてはよくわからなかった..
+
+# Attension
+アテンション機構は、query と key-valueのペアをoutputにマッピングすることで説明される。
+
+この時、query, key, value, outputはすべてvectorである
+
+outputはvalue * weightの合計で計算される。
+
+各value毎に割り当てられているweightは、計算される queryの互換関数によって 対応するkeyで (よくわからず)
+
+## Scaled Dot-Product Attention
+我々は特定のアテンション機構を"Scaled Dot-Product Attention"と呼ぶ
+
+入力はqueryとkeyで構成されており、次元はdkとする
+
+また、valueの次元はdvとする
+
+我々はqueryのdot積(dot products)をすべてのキーで計算する
+
+その後sqrt(dk)でそれぞれを除算し、sofmax関数を適用する。valueの重みを得るために。
