@@ -93,10 +93,7 @@ Transformerはこのような構造に従います。
 
 それぞれのサブ層の出力は以下のような感じ
 
-```python
-    # Encoder sub Layer
-    LayerNrom(x + Sublayer(x))
-```
+$$ LayerNrom(x + SubLayer(x)) $$
 
 これらの残渣接続層を促進する為、このサブ層の出力は512次元となる (埋め込みそうと同様に)
 
@@ -137,3 +134,210 @@ outputはvalue * weightの合計で計算される。
 我々はqueryのdot積(dot products)をすべてのキーで計算する
 
 その後sqrt(dk)でそれぞれを除算し、sofmax関数を適用する。valueの重みを得るために。
+
+query, key, valueは行列としてQ, K, Vにまとめられる。
+
+その時、我々は以下のようにアテンション層を計算する
+
+$$ Attention(Q, K, V) = softmax(\frac{Q \cdot K^T}{\sqrt{d_k}}) \cdot V $$
+
+もっとも一般的に使われる2つのアテンション機構は加算アテンションとドット積アテンションです。
+
+dot積アテンションは我々のアルゴリズムと同じです。$\frac{1}{\sqrt{d_k}}$で割るスケーリング要素を除いて。
+
+加算アテンションとドット積アテンションは、理論的な複雑さは同程度だが、dot積アテンションはより早く、よりスペース効率が良い。
+
+なぜならdot積は高い最適化可能な行列演算コードを使って実装できるためである。
+
+### 要約
+結局これも図の通り。図と式を合わせてみると理解しやすいと思う。
+
+query, key, valueが何かがいまいちわからない。。
+
+```mermaid
+flowchart
+    A[MatMul]
+    B[Scale]
+    C[Mask Opt.]
+    D[SoftMax]
+    E[MatMul]
+
+    Q[(query)] --> A
+    K[(key)]   --> A
+    A --> B --> C --> D --> E
+    V[(value)] --> E
+    E --> O[(output)]
+```
+
+## Multi-Head Attention
+1つのアテンション層を$d_{model}$次元で計算する代わりに、
+
+我々は線形処理を行く事が有益であることを発見した。
+
+それらの処理を行った後、アテンション層の処理を並列で行う。
+
+出力を結合し、再度線形処理を行う。
+
+Multi-head attentionは、異なる場所の異なる表現空間から情報を追加することを可能とする
+
+1つのアテンション層では、平均化によりこれらのことができませんでした。
+
+式は以下のような感じとなっている。
+
+h = 8並列で実行する。
+
+また、次元は$d_k = d_v = \frac{d_{model}}{h} = 64$ となるようにする
+
+各アテンション層の次元を減らすことにより、全体の計算量は1つのアテンション層でフル次元($d_{model}$)の計算をしたときと同じとなる。
+
+$$ MultiHead(Q, K, V) = Concat(head1, ..., head_h)W^o $$
+
+$$ where \space head_i = Attention(Q \cdot W_i^Q, V \cdot W_i^K, V \cdot W_i^V) $$
+
+$$ W_i^Q \in R^{d_{model} * d_k} $$
+
+$$ W_i^K \in R^{d_{model} * d_k} $$
+
+$$ W_i^V \in R^{d_{model} * d_v} $$
+
+$$ W_i^O \in R^{h * d_v * d_{model}} $$
+
+$$ h = 8 $$
+
+$$ d_k = d_v = \frac{d_{model}}{h} = 64 $$
+
+### 要約
+これまで単一のアテンション層で処理してきたが、
+
+並列に処理することにより有益な結果が得られることを発見した。
+
+Multi-head attentionは、異なる場所の異なる表現空間から情報を追加することを可能とする
+
+1つのアテンション層では、平均化によりこれらのことができなかった。
+
+各アテンション層の次元を減らすことで、計算量も同等。
+
+```mermaid
+flowchart
+    V[(value)]
+    K[(key)]
+    Q[(query)]
+    O[(output)]
+
+    A[Linear]
+    B[Linear]
+    C[Linear]
+    D[Scaled Dot-Product Attention]
+    E[Concat]
+    F[Linear]
+
+    V --> A
+    K --> B
+    Q --> C
+    A --> D
+    B --> D
+    C --> D
+    D --> E --> F --> O
+```
+
+## Applications of Attention in our Model
+Transformerの中で、Multi-Head Attentionは3つの異なる使い方をしている
+
+- encoder-decoder attention層で、queryは1つ前のdecoder層の出力、key, valueはencoder層からの出力となっている。これは各デコーダーの位置で、入力の全ポジションを見ることを可能とする。
+
+- encoderは自己アテンション層を含む。自己アテンション層のすべてのkey、value, queryは同じ場所から来る。この場合、1つ前のencoderの出力がkey, value, queryとなる。エンコーダーの各位置で、それまでのエンコーダーの全てのポジションを見ることができる。
+
+- 同じように、デコーダーの自己アテンション層もそれまでの全てのエンコーダーの位置を確認できる。我々は自己回帰的な性質を保持するため、デコーダー内での左向きの情報の流れを防ぐ必要がある。そのために我々はこれを"scaled dot-product attention"の中にマスク処理として実装する. 不正接続に対応するsoftmax関数への入力となる全ての値に対して。
+
+### 要約
+3つの異なるMulti-Head Attention層を使っている
+
+decoder内のmask処理の目的と内容がよくわからなかった。
+
+## Position-wise Feed-Forward Networks
+アテンション層に加え、それぞれの層は全結合層を含む。
+
+これは、各位置(encoder, decoder)で別々に同じように適用される。
+
+これは2つのLinear層とReLU層から構成される
+
+$$ FFN(x) = max(0, x \cdot W_1 + b_1) \cdot W_2 + b_2 $$
+
+ReLUを関数のように書くと以下のような感じ。2つの線形処理の間(in between)にReLUがあるという感じ
+
+$$ FFN(x) = ReLU(x \cdot W_1 + b_1) \cdot W_2 + b_2 $$
+
+線形変換は、異なる位置でも同じである間、それらは異なるパラメータを使う。層から層へ。
+
+異なる言い方をすると、2つの畳み込み層(kernel=1)とも言える。
+
+これらの入出力の次元($d_{model}$)は512で、中間層の次元($d_{ff}$)は2048である。
+
+$$ d_{model} = 512 $$
+
+$$ d_{ff} = 2048 $$
+
+## Embedding and Softmax
+他の時系列伝達モデル同様、我々は学習されたエンベディング層を使う。入出力データを$d_{model}$次元のvectorに変換するため。
+
+我々はいつもの線形変換層、ソフトマックス関数も使う。decoder出力を予測された次の確率に変換するため。
+
+我々のモデルでは、同じ重み行列を共有する。2つのエンベディング層と前のソフトマックス線形変換層で、[30]と同じように。
+
+エンベディング層で、我々はこれらの重みに$\sqrt{d_{model}}$を乗算する。
+
+参考: [Embedding層](https://cvml-expertguide.net/terms/dl/layers/embedding-layer/)
+
+## Positional Encoding
+我々のモデルは回帰処理や畳み込み処理を含まないので、配列の順序を利用するため、我々は配列内のトークンの相対的もしくは絶対的位置についてのいくつかの情報を入れないといけない
+
+この目的を達成するため、我々は"Positional Encodings"を入力埋め込み層としてencoder, decoderの最初の層に追加している
+
+Positional Encodingsは$d_{model}$次元を持つので、これら2つは加算することができる。
+
+Positional Encodingsにはたくさんの選択肢がある.[9]で学習し修正した。
+
+我々は異なる周波数のsin, cos関数を使っている
+
+$$ PE_{(pos,2i  )} = \sin(\frac{pos}{10000^{\frac{2i}{d_{model}}}}) $$
+
+$$ PE_{(pos,2i+1)} = \cos(\frac{pos}{10000^{\frac{2i}{d_{model}}}}) $$
+
+posは位置を表す。
+
+iは次元を表す。
+
+positional encodingの各次元は、正弦波に対応する
+
+波長は、$2\pi$ から $10000 * 2\pi$ までの等比数列で構成される
+
+我々がこの関数を選んだ理由は、我々はこれがモデルを簡単に学習することを可能にすると仮定した
+
+我々は実験した[9]の学習済positional embeddingsを使って, そして2つのバージョンが同等の結果を出すことを発見した。 (実験でsin, cosの2つがどちらも同じような結果となることを確認した)
+
+我々はsin版を選んだ。なぜなら、これは配列の長さを外挿し、モデルが学習中に遭遇したものより長くできるかもしれないから。
+
+# Why Self-Attention
+このセクションでは、様々な側面から一般的に使われる回帰処理や畳み込み処理と自己アテンション層を比較する。
+
+自己アテンションを使うモチベーションとして3つの要望を考えてみる
+
+1つ目は、層毎の合計計算量.
+
+2つ目は並列化できる計算量
+
+3つ目はnetworkないで長い次元間のpathの長さ
+
+高次元の学習をすることは、多くの時系列伝達モデルで鍵となる挑戦である。
+
+1つ目の学習に影響を与えるカギとなる要素は、forwardとbackwardの長さである。
+
+パスが短いより長いほうが学習が簡単である
+
+したがって、我々は最大のパスの長さを比較する。各入出力間の。異なる層で構成されたネットワークで。
+
+Table 1にもある通り、自己アテンション層は固定の計算量であるのに対し、recurrent層は$O(n)$のオーダーの計算量となっている。
+
+計算複雑度の点から、自己アテンション層はrecurrent層より高速である。配列の長さnが次元dよりも小さい場合。機械翻訳に関してはだいたいの場合はそのように(n > dのように)なっている。
+
+<!-- P7 3line から始まる文章から -->
