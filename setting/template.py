@@ -80,30 +80,44 @@ def test(device, dataloader, model, loss_fn):
     print(f"Test: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
 def main():
-    # 使用するデバイスを指定
+    # =================================
+    # 1. 使用するデバイスを指定
+    # =================================
     device = "cuda" if (torch.cuda.is_available()) else "cpu"
     print(f"Using device: {device}")
 
-    # データ取得
+    # =================================
+    # 2. データ取得
+    # =================================
     # TODO
 
-    # モデル生成
+    # =================================
+    # 3. モデル生成
+    # =================================
     model = MyNet().to(device)
 
-    # モデルのロード
+    # =================================
+    # 4. モデルのロード
+    # =================================
     model_save_path = "model/model.pth" # モデルの保存先
-    if (os.path.exists(model_save_path) == True):
+    if   (os.path.exists(model_save_path) == True):
         model.load_state_dict(torch.load(model_save_path))
-    else:
+    elif (os.path.exists(os.path.dirname(model_save_path)) == False):
         os.makedirs(os.path.dirname(model_save_path))
 
-    # 誤差関数
+    # =================================
+    # 5. 誤差関数
+    # =================================
     loss_fn = nn.CrossEntropyLoss()
 
-    # 最適化関数
+    # =================================
+    # 6. 最適化関数
+    # =================================
     optimizer = torch.optim.SGD(model.parameters(), lr = 0.001)
 
-    # 学習
+    # =================================
+    # 7. 学習
+    # =================================
     epochs = 5
     for t in range(epochs):
         print(f"Epoch {t+1}\n-------------------------")
@@ -111,7 +125,9 @@ def main():
         test (device, test_dataloader , model, loss_fn)
     print("Done!")
 
-    # モデルの保存
+    # =================================
+    # 8. モデルの保存
+    # =================================
     torch.save(model.state_dict(), model_save_path)
     print(f"Saved Pytorch Model State to {model_save_path}")
 

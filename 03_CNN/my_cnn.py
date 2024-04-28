@@ -74,14 +74,14 @@ def downLoadCifar10():
     ])
 
     train_data = datasets.CIFAR10(
-        root      = "data/cifar10",
+        root      = "../data/cifar10",
         train     = True,
         download  = True,
         transform = preprocess,
     ) # 50000 (3[ch] * 32[width] * 32[height])
 
     test_data  = datasets.CIFAR10(
-        root      = "data/cifar10",
+        root      = "../data/cifar10",
         train     = False,
         download  = True,
         transform = preprocess,
