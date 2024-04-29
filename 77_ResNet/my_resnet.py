@@ -11,8 +11,10 @@ from torchvision import datasets, transforms
 from torchvision.transforms import ToTensor
 import torchvision.transforms.functional as F
 from collections import OrderedDict
+from torchinfo import summary
 
 import os
+from tqdm import tqdm
 
 class ResBlock(nn.Module):
     def __init__(self, ch):
@@ -46,7 +48,10 @@ class DownSamplingBlock(nn.Module):
             nn.BatchNorm2d(num_features=out_ch),
         )
 
-        self.downsampling = nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=1, stride=2) # down sampling layer for input
+        self.downsampling = nn.Sequential(
+            nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=1, stride=2), # down sampling layer for input
+            nn.BatchNorm2d(num_features=out_ch),
+        )
 
         self.relu = nn.ReLU()
 
@@ -67,13 +72,15 @@ class MyNet(nn.Module):
         # 1. First Layer (1 Conv layer)
         # =======================================
         # Conv (kernel=3x3 ch=16 output=32x32)
-        od["first"] = nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, padding=1)
+        od["first"]      = nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, padding=1)
+        od["BN_first"]   = nn.BatchNorm2d(num_features=16)
+        od["ReLU_first"] = nn.ReLU()
 
         # =======================================
         # 2. Second Layer (2n Conv layers)
         # =======================================
         # Conv (kernel=3x3 ch=16 output=32x32) * 2n
-        for i in range(2*layer_num):
+        for i in range(layer_num):
             od[f"first_block{i}"] = ResBlock(16)
 
         # =======================================
@@ -83,7 +90,7 @@ class MyNet(nn.Module):
         od[f"downsampling1"] = DownSamplingBlock(16, 32)
 
         # Conv (kernel=3x3 ch=32 output=16x16) * (2n - 2)
-        for i in range(2*layer_num - 2):
+        for i in range(layer_num - 1):
             od[f"second_block{i}"] = ResBlock(32)
 
         # =======================================
@@ -93,7 +100,7 @@ class MyNet(nn.Module):
         od[f"downsampling2"] = DownSamplingBlock(32, 64)
 
         # Conv (kernel=3x3 ch=64 output=8x8) * (2n - 2)
-        for i in range(2*layer_num - 2):
+        for i in range(layer_num - 1):
             od[f"third_block{i}"] = ResBlock(64)
 
         self.model = nn.Sequential(od)
@@ -148,8 +155,9 @@ def train(device, dataloader, model, loss_fn, optimizer):
         # 進捗表示
         if (batch % 10 == 0):
             loss = loss.item() # .item()は1つのtensorを値に変換するためのメソッド
-            current = (batch + 1) * len(X)
-            print(f"loss: {loss:>7f} [{current:>5d}] / {size:>5d}]")
+            current = batch + 1
+            iter_num =  round(size / len(X)) if (batch == 0) else iter_num
+            print(f"loss: {loss:>7f} [{current:>5d}] / {iter_num:>5d}]")
 
 def test(device, dataloader, model, loss_fn):
     # データのすべてのサイズ (10000)
@@ -179,9 +187,14 @@ def test(device, dataloader, model, loss_fn):
     print(f"Test: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
 def downLoadCifar10():
-    preprocess = transforms.Compose([
-        # transforms.Resize(256),     # 32x32 -> 256x256
-        # transforms.CenterCrop(224), # 256x256 -> 224x224(center)
+    train_preprocess = transforms.Compose([
+        transforms.RandomCrop(size=(32, 32), padding=4),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.ToTensor(),
+        transforms.Normalize((0.49139967861519745, 0.4821584083946076, 0.44653091444546616), (0.2470322324632823, 0.24348512800005553, 0.2615878417279641)),
+    ])
+
+    test_preprocess = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.49139967861519745, 0.4821584083946076, 0.44653091444546616), (0.2470322324632823, 0.24348512800005553, 0.2615878417279641)),
     ])
@@ -190,23 +203,15 @@ def downLoadCifar10():
         root      = "../data/cifar10",
         train     = True,
         download  = True,
-        transform = preprocess,
+        transform = train_preprocess,
     ) # 50000 (3[ch] * 32[width] * 32[height])
 
     test_data  = datasets.CIFAR10(
         root      = "../data/cifar10",
         train     = False,
         download  = True,
-        transform = preprocess,
+        transform = test_preprocess,
     ) # 10000 (3[ch] * 32[width] * 32[height])
-
-    '''
-    TODO 1. Subtracting mean value from training and test data.
-    
-    Tips:
-    - I don't do data augmentation.
-    - I don't split training data into training data and validation data.
-    '''
 
     batch_size = 128
     train_dataloader = DataLoader(train_data, batch_size = batch_size, shuffle = True, num_workers=2)
@@ -230,6 +235,7 @@ def main():
     # 3. モデル生成
     # =================================
     model = MyNet(layer_num=3).to(device)
+    summary(model=model, input_size=(128, 3, 32, 32), depth=5)
 
     # =================================
     # 4. モデルのロード
@@ -248,20 +254,21 @@ def main():
     # =================================
     # 6. 最適化関数
     # =================================
-    optimizer = torch.optim.SGD(model.parameters(), lr = 0.01, momentum=0.9, weight_decay=0.0001)
+    optimizer = torch.optim.SGD(model.parameters(), lr = 0.1, momentum=0.9, weight_decay=0.0001)
 
     # 32K(epoch=91), 48K(epoch=136)でそれぞれlrを1/10する必要がある。
     # 64K(epoch=182)で学習は終わり
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[91, 136], gamma=0.1)
 
     # =================================
     # 7. 学習
     # =================================
-    epochs = 5
-    for t in range(epochs):
+    epochs = 182
+    for t in tqdm(range(epochs)):
         print(f"Epoch {t+1}\n-------------------------")
         train(device, train_dataloader, model, loss_fn, optimizer)
         test (device, test_dataloader , model, loss_fn)
+        scheduler.step()
     print("Done!")
 
     # =================================
