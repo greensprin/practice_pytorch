@@ -218,3 +218,24 @@ Sigmoid関数より勾配が大きく出るため、学習を高速化でき
 ## 標準化
 
 $$ \frac{(x - \bar{x})}{\sigma} $$
+
+# よく出る英単語
+
+|単語|意味|
+|:-:|:-:|
+|distribution|分布|
+|rmeain|残る|
+|refer to|参照する|
+|eliminate|なくす|
+|accomplish|達成する|
+|due to|~により|
+|observe|観察する|
+|specify|指定する|
+|inference|推論|
+|expect|期待する|
+
+# 勉強する内容
+- [ ] 正則化
+    - 参考: [ヨビノリ](https://zero2one.jp/learningblog/yobinori-collab-regularization/)
+- [ ] SGD (weight decay)
+    - 参考: [pytorch SGD](https://pytorch.org/docs/stable/generated/torch.optim.SGD.html)
