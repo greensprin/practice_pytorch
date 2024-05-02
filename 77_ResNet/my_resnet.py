@@ -9,7 +9,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from torchvision.transforms import ToTensor
-import torchvision.transforms.functional as F
+import torch.nn.functional as F
 from collections import OrderedDict
 from torchinfo import summary
 
@@ -36,27 +36,41 @@ class ResBlock(nn.Module):
         out = self.relu(hx)
         return out
 
+class ZeroPaddingLayer(nn.Module):
+    def __init__(self, zero_pad_func):
+        super().__init__()
+        self.zero_pad_func = zero_pad_func
+
+    def forward(self, x):
+        return self.zero_pad_func(x)
+
 class DownSamplingBlock(nn.Module):
     def __init__(self, in_ch, out_ch):
         super().__init__()
 
         self.model = nn.Sequential(
-            nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=1, stride=2), # down sampling layer
+            nn.Conv2d(in_channels=in_ch , out_channels=out_ch, kernel_size=3, padding=1, stride=2), # down sampling layer
             nn.BatchNorm2d(num_features=out_ch),
             nn.ReLU(),
             nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, padding=1),
             nn.BatchNorm2d(num_features=out_ch),
         )
 
-        self.downsampling = nn.Sequential(
-            nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=1, stride=2), # down sampling layer for input
-            nn.BatchNorm2d(num_features=out_ch),
-        )
+        # DownSampling Option A
+        zero_padding_num = (out_ch - in_ch) // 2
+        self.downsampling = ZeroPaddingLayer(lambda x: F.pad(x[:, :, ::2, ::2], (0, 0, 0, 0, zero_padding_num, zero_padding_num), "constant", 0))
+
+        # DownSampling Option B
+        # self.downsampling = nn.Sequential(
+        #     nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=1, stride=2), # down sampling layer for input
+        #     nn.BatchNorm2d(num_features=out_ch),
+        # )
 
         self.relu = nn.ReLU()
 
     def forward(self, x):
         x_down_sampling = self.downsampling(x)
+
         fx = self.model(x)
         hx = fx + x_down_sampling
         out = self.relu(hx)

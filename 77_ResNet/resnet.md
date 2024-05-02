@@ -246,6 +246,10 @@ Fは2~3の層で構成される(さらに層を追加することも可能)
 
 各畳み込み層の後と、活性化関数の前にbatch normalization(BN)を行う
 
-[参考になるコード](https://github.com/JayPatwardhan/ResNet-PyTorch/blob/master/ResNet/ResNet.py)
+[参考になるコード1](https://github.com/JayPatwardhan/ResNet-PyTorch/blob/master/ResNet/ResNet.py)
+[参考になるコード2](https://github.com/akamaster/pytorch_resnet_cifar10/blob/master/resnet.py)
+[参考になるコード3](https://github.com/pytorch/vision/blob/main/torchvision/models/resnet.py)
 
 global average pooling は、ch毎に平均値を計算するpooling層らしい
+
+[alexnet※データ初期処理の説明が参考になる](https://proceedings.neurips.cc/paper_files/paper/2012/file/c399862d3b9d6b76c8436e924a68c45b-Paper.pdf)
